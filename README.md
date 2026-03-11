@@ -16,3 +16,10 @@ This repository contains the MVP scaffolding for an omnichannel fitness agent ap
 ## Getting Started
 
 Follow the instructions in this document to get up and running with the application.
+
+
+## TODO
+Use queue processing
+`Webhook → Redis Queue → Worker → Agent`
+
+Prevents WhatsApp timeout.
