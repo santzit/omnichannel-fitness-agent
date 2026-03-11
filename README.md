@@ -1,6 +1,6 @@
 # Omnichannel Fitness Agent
 
-This repository contains the MVP scaffolding for an omnichannel fitness agent application using FastAPI, PostgreSQL, and pgvector. 
+This repository contains the MVP scaffolding for an omnichannel fitness agent application using FastAPI, Langgraph, PostgreSQL, and pgvector. 
 
 ## Setup Instructions
 
@@ -11,7 +11,7 @@ This repository contains the MVP scaffolding for an omnichannel fitness agent ap
 ### Endpoints
 
 - `/health`: For health check.
-- `/webhooks/meta`: For verification.
+- `/webhooks/meta`: Web hook for meta Whatsapp.
 
 ## Getting Started
 
