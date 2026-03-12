@@ -1,7 +1,6 @@
 # Standalone compose file for CI smoke tests.
 # Uses Traefik in HTTP-only mode (no TLS / Let's Encrypt) and
 # injects MOCK_AGENT=true so the app starts without real OpenAI / PGVector calls.
-version: "3.9"
 
 services:
 
