@@ -1,0 +1,19 @@
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+lint.select = [
+  "E",
+  "F",
+  "I",
+  "B",
+  "UP",
+]
+
+lint.ignore = [
+  "E501"
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
