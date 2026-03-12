@@ -1,17 +1,25 @@
-from langchain_postgres import PGVector
-from langchain_openai import OpenAIEmbeddings
 import os
 
-connection = os.getenv("POSTGRES_URL")
+if os.getenv("MOCK_AGENT") == "true":
+    class _MockRetriever:
+        def invoke(self, text):
+            return []
 
-embeddings = OpenAIEmbeddings()
+    retriever = _MockRetriever()
+else:
+    from langchain_postgres import PGVector
+    from langchain_openai import OpenAIEmbeddings
 
-vector_store = PGVector(
-    connection=connection,
-    collection_name="fitness_docs",
-    embeddings=embeddings,
-)
+    connection = os.getenv("POSTGRES_URL")
 
-retriever = vector_store.as_retriever(
-    search_kwargs={"k": 4}
-)
+    embeddings = OpenAIEmbeddings()
+
+    vector_store = PGVector(
+        connection=connection,
+        collection_name="fitness_docs",
+        embeddings=embeddings,
+    )
+
+    retriever = vector_store.as_retriever(
+        search_kwargs={"k": 4}
+    )
