@@ -3,8 +3,10 @@ name: PR Docker Build
 on:
   pull_request:
     branches:
-      - main
-      - develop
+      - "main"
+  push:
+    branches:
+      - "main"
 
 jobs:
   build:
