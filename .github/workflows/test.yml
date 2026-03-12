@@ -9,9 +9,42 @@ on:
       - "main"
 
 jobs:
+  test:
+
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+
+    steps:
+
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run tests
+        run: pytest tests/ -v
+
   build:
 
     runs-on: ubuntu-latest
+
+    needs: test
 
     permissions:
       contents: read
@@ -42,10 +75,6 @@ jobs:
           tags: omnichannel-fitness-agent:pr-${{ github.event.pull_request.number }}
           cache-from: type=local,src=/tmp/.buildx-cache
           cache-to: type=local,dest=/tmp/.buildx-cache-new
-
-      #- name: Run tests
-      #  run: |
-      #    docker run --rm omnichannel-fitness-agent:pr-${{ github.event.pull_request.number }} pytest
 
       - name: Clean cache
         run: |

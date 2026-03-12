@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Request, Query
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import JSONResponse, PlainTextResponse
 from agent.graph import agent
 from services.whatsapp import send_whatsapp_message
 import os
@@ -17,7 +17,7 @@ async def verify_webhook(
 ):
     if hub_mode == "subscribe" and hub_verify_token == VERIFY_TOKEN:
         return PlainTextResponse(content=hub_challenge)
-    return {"status": "forbidden"}
+    return JSONResponse(status_code=403, content={"status": "forbidden"})
 
 
 @router.post("/webhooks/meta")
