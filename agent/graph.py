@@ -3,8 +3,16 @@ from .state import AgentState
 from .prompts import SYSTEM_PROMPT
 from app.rag.retriever import retriever
 from openai import OpenAI
+import os
 
-client = OpenAI()
+_openai_kwargs = {"api_key": os.getenv("OPENAI_API_KEY")}
+_endpoint = os.getenv("OPENAI_ENDPOINT")
+if _endpoint:
+    _openai_kwargs["base_url"] = _endpoint
+
+client = OpenAI(**_openai_kwargs)
+
+_LLM_MODEL = os.getenv("LLM_MODEL", "gpt-4o-mini")
 
 
 def retrieve_docs(state):
@@ -18,7 +26,7 @@ def generate_answer(state):
     prompt = SYSTEM_PROMPT.format(context=context)
 
     response = client.chat.completions.create(
-        model="gpt-4o-mini",
+        model=_LLM_MODEL,
         messages=[
             {"role": "system", "content": prompt},
             {"role": "user", "content": state["user_message"]},
