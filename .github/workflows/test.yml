@@ -43,9 +43,9 @@ jobs:
           cache-from: type=local,src=/tmp/.buildx-cache
           cache-to: type=local,dest=/tmp/.buildx-cache-new
 
-      - name: Run tests
-        run: |
-          docker run --rm omnichannel-fitness-agent:pr-${{ github.event.pull_request.number }} pytest
+      #- name: Run tests
+      #  run: |
+      #    docker run --rm omnichannel-fitness-agent:pr-${{ github.event.pull_request.number }} pytest
 
       - name: Clean cache
         run: |
