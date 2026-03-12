@@ -6,6 +6,8 @@ services:
     build: .
     ports:
       - "8000:8000"
+    env_file:
+      - .env
     depends_on:
       - postgres
 
@@ -21,6 +23,8 @@ services:
   openwebui:
     image: ghcr.io/open-webui/open-webui:main
     environment:
-      OPENAI_API_BASE: http://agent-api:8000/v1
+      OPENAI_API_BASE: http://api:8000/v1
     ports:
       - "3000:8080"
+    depends_on:
+      - api

@@ -7,9 +7,9 @@ connection = os.getenv("POSTGRES_URL")
 embeddings = OpenAIEmbeddings()
 
 vector_store = PGVector(
-    connection_string=connection,
+    connection=connection,
     collection_name="fitness_docs",
-    embedding_function=embeddings
+    embeddings=embeddings,
 )
 
 retriever = vector_store.as_retriever(
