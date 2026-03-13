@@ -1,27 +1,40 @@
-from langchain_community.document_loaders import DirectoryLoader
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_postgres import PGVector
-from langchain_openai import OpenAIEmbeddings
+import logging
 import os
 
-loader = DirectoryLoader("./docs")
+_log = logging.getLogger(__name__)
 
-documents = loader.load()
 
-splitter = RecursiveCharacterTextSplitter(
-    chunk_size=1000,
-    chunk_overlap=200
-)
+def ingest() -> None:
+    """Load docs from ./docs, split them, and upsert into the PGVector store."""
+    from langchain_community.document_loaders import DirectoryLoader
+    from langchain_openai import OpenAIEmbeddings
+    from langchain_postgres import PGVector
+    from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-chunks = splitter.split_documents(documents)
+    loader = DirectoryLoader("./docs")
+    documents = loader.load()
 
-embeddings = OpenAIEmbeddings()
+    splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+    chunks = splitter.split_documents(documents)
 
-connection = os.getenv("POSTGRES_URL", "postgresql://postgres:postgres@postgres:5432/fitness")
+    embeddings_kwargs = {}
+    endpoint = os.getenv("OPENAI_ENDPOINT")
+    if endpoint:
+        embeddings_kwargs["openai_api_base"] = endpoint
 
-vector_store = PGVector.from_documents(
-    documents=chunks,
-    embedding=embeddings,
-    connection=connection,
-    collection_name="fitness_docs",
-)
+    embeddings = OpenAIEmbeddings(**embeddings_kwargs)
+
+    connection = os.getenv("POSTGRES_URL", "postgresql://postgres:postgres@postgres:5432/fitness")
+
+    PGVector.from_documents(
+        documents=chunks,
+        embedding=embeddings,
+        connection=connection,
+        collection_name="fitness_docs",
+    )
+    _log.info("Ingested %d chunks into fitness_docs collection.", len(chunks))
+
+
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
+    ingest()
