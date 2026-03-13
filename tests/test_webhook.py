@@ -1,5 +1,6 @@
 from unittest.mock import AsyncMock, patch
 
+from tests.conftest import needs_openai
 
 _WHATSAPP_PATH = "app.api.meta_webhook.send_whatsapp_message"
 
@@ -72,13 +73,14 @@ def test_verify_webhook_wrong_mode_returns_forbidden(client):
 # ---------------------------------------------------------------------------
 
 
-def test_post_message_invokes_agent_and_sends_reply(client, mock_agent):
-    mock_agent.invoke.return_value = {"response": "Stay hydrated and exercise daily!"}
-
+@needs_openai
+def test_post_message_invokes_agent_and_sends_reply(client):
     with patch(_WHATSAPP_PATH, new_callable=AsyncMock) as mock_send:
         response = client.post("/webhooks/meta", json=_SAMPLE_PAYLOAD)
 
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
-    mock_agent.invoke.assert_called_once_with({"user_message": "What workout should I do?"})
-    mock_send.assert_awaited_once_with("5511999999999", "Stay hydrated and exercise daily!")
+    mock_send.assert_awaited_once()
+    _to, reply = mock_send.call_args.args
+    assert _to == "5511999999999"
+    assert reply and reply.strip(), "Agent returned an empty reply"

@@ -46,6 +46,7 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENAI_ENDPOINT: ${{ vars.OPENAI_ENDPOINT }}
           LLM_MODEL: ${{ vars.LLM_MODEL }}
+          EMBEDDING_MODEL: ${{ vars.EMBEDDING_MODEL }}
         run: pytest tests/ -v
 
   build:

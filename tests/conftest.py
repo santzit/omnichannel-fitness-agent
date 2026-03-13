@@ -1,22 +1,20 @@
 """
 Pytest configuration and shared fixtures.
-
-External dependencies (PGVector, OpenAI) are stubbed out via sys.modules
-BEFORE any application module is imported, preventing connection attempts
-during test collection.
 """
-import sys
-from unittest.mock import AsyncMock, MagicMock
+import os
 
 import pytest
 
 # ---------------------------------------------------------------------------
-# Stub out modules that attempt I/O at import time
+# Reusable skip marker for tests that require real OpenAI credentials.
+# Tests decorated with @needs_openai are skipped when OPENAI_API_KEY is not
+# set, so the suite stays green in environments without credentials while
+# exercising real OpenAI in CI where the secret is injected.
 # ---------------------------------------------------------------------------
-_mock_agent = MagicMock()
-
-sys.modules["app.rag.retriever"] = MagicMock(retriever=MagicMock())
-sys.modules["agent.graph"] = MagicMock(agent=_mock_agent)
+needs_openai = pytest.mark.skipif(
+    not os.getenv("OPENAI_API_KEY"),
+    reason="OPENAI_API_KEY not configured",
+)
 
 
 # ---------------------------------------------------------------------------
@@ -36,10 +34,3 @@ def client(app):
     from fastapi.testclient import TestClient
 
     return TestClient(app)
-
-
-@pytest.fixture()
-def mock_agent():
-    """Return the shared agent mock, reset before each test."""
-    _mock_agent.reset_mock()
-    return _mock_agent
