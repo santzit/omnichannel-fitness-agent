@@ -27,7 +27,8 @@ def ingest() -> None:
     if endpoint:
         embeddings_kwargs["openai_api_base"] = endpoint
 
-    embeddings = OpenAIEmbeddings(**embeddings_kwargs)
+    embedding_model = os.getenv("EMBEDDING_MODEL", "text-embedding-ada-002")
+    embeddings = OpenAIEmbeddings(model=embedding_model, **embeddings_kwargs)
 
     connection = os.getenv("POSTGRES_URL", "postgresql://postgres:postgres@postgres:5432/fitness")
 
