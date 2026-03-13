@@ -7,9 +7,10 @@ _log = logging.getLogger(__name__)
 def ingest() -> None:
     """Load docs from ./docs, split them, and upsert into the PGVector store."""
     from langchain_community.document_loaders import DirectoryLoader, TextLoader
-    from langchain_openai import OpenAIEmbeddings
     from langchain_postgres import PGVector
     from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+    from app.rag._embeddings import build_embeddings
 
     loader = DirectoryLoader(
         "./docs",
@@ -22,13 +23,7 @@ def ingest() -> None:
     splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
     chunks = splitter.split_documents(documents)
 
-    embeddings_kwargs = {}
-    endpoint = os.getenv("OPENAI_ENDPOINT")
-    if endpoint:
-        embeddings_kwargs["openai_api_base"] = endpoint
-
-    embedding_model = os.getenv("EMBEDDING_MODEL", "text-embedding-ada-002")
-    embeddings = OpenAIEmbeddings(model=embedding_model, **embeddings_kwargs)
+    embeddings = build_embeddings()
 
     connection = os.getenv(
         "POSTGRES_URL",

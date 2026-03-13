@@ -18,21 +18,16 @@ class _LazyRetriever:
 
     def invoke(self, text: str):
         if self._retriever is None:
-            from langchain_openai import OpenAIEmbeddings
             from langchain_postgres import PGVector
+
+            from app.rag._embeddings import build_embeddings
 
             connection = os.getenv(
                 "POSTGRES_URL",
                 "postgresql+psycopg://postgres:postgres@postgres:5432/fitness",
             )
 
-            embeddings_kwargs = {}
-            endpoint = os.getenv("OPENAI_ENDPOINT")
-            if endpoint:
-                embeddings_kwargs["openai_api_base"] = endpoint
-
-            embedding_model = os.getenv("EMBEDDING_MODEL", "text-embedding-ada-002")
-            embeddings = OpenAIEmbeddings(model=embedding_model, **embeddings_kwargs)
+            embeddings = build_embeddings()
 
             vector_store = PGVector(
                 connection=connection,

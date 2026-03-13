@@ -182,11 +182,15 @@ def test_rag_retriever_default_connection_is_not_none():
         return mock_vs
 
     # Remove POSTGRES_URL so the fallback default is the only option.
+    # Patch build_embeddings at the source module so both the Azure and the
+    # standard-OpenAI code paths are intercepted regardless of which one the
+    # current environment would select.
     env_without_postgres = {k: v for k, v in os.environ.items() if k != "POSTGRES_URL"}
     with patch.dict(os.environ, env_without_postgres, clear=True):
-        with patch("langchain_openai.OpenAIEmbeddings", return_value=MagicMock()):
-            with patch("langchain_postgres.PGVector", side_effect=spy_pgvector):
-                _LazyRetriever().invoke("test")
+        with patch("app.rag._embeddings.OpenAIEmbeddings", return_value=MagicMock()):
+            with patch("app.rag._embeddings.AzureOpenAIEmbeddings", return_value=MagicMock()):
+                with patch("langchain_postgres.PGVector", side_effect=spy_pgvector):
+                    _LazyRetriever().invoke("test")
 
     connection = captured.get("connection")
     assert connection is not None, (
@@ -215,18 +219,22 @@ def test_rag_ingest_default_connection_is_not_none():
         captured.update(kwargs)
 
     # Remove POSTGRES_URL so the fallback default is the only option.
+    # Patch build_embeddings at the source module so both the Azure and the
+    # standard-OpenAI code paths are intercepted regardless of which one the
+    # current environment would select.
     env_without_postgres = {k: v for k, v in os.environ.items() if k != "POSTGRES_URL"}
     with patch.dict(os.environ, env_without_postgres, clear=True):
         with patch(
             "langchain_community.document_loaders.DirectoryLoader",
             return_value=mock_loader,
         ):
-            with patch("langchain_openai.OpenAIEmbeddings", return_value=MagicMock()):
-                with patch(
-                    "langchain_postgres.PGVector.from_documents",
-                    side_effect=spy_from_documents,
-                ):
-                    ingest()
+            with patch("app.rag._embeddings.OpenAIEmbeddings", return_value=MagicMock()):
+                with patch("app.rag._embeddings.AzureOpenAIEmbeddings", return_value=MagicMock()):
+                    with patch(
+                        "langchain_postgres.PGVector.from_documents",
+                        side_effect=spy_from_documents,
+                    ):
+                        ingest()
 
     connection = captured.get("connection")
     assert connection is not None, (
