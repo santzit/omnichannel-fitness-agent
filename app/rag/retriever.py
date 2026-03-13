@@ -12,12 +12,13 @@ else:
 
     connection = os.getenv("POSTGRES_URL")
 
-    _embeddings_kwargs = {}
+    embeddings_kwargs = {}
     endpoint = os.getenv("OPENAI_ENDPOINT")
     if endpoint:
-        _embeddings_kwargs["openai_api_base"] = endpoint
+        embeddings_kwargs["openai_api_base"] = endpoint
 
-    embeddings = OpenAIEmbeddings(**_embeddings_kwargs)
+    embedding_model = os.getenv("EMBEDDING_MODEL", "text-embedding-ada-002")
+    embeddings = OpenAIEmbeddings(model=embedding_model, **embeddings_kwargs)
 
     vector_store = PGVector(
         connection=connection,
