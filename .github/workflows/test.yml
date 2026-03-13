@@ -199,8 +199,10 @@ jobs:
           echo "Response: $response"
           echo "$response" | grep -q "<Response>"
           echo "$response" | grep -q "<Message>"
-          # Verify the agent returned a non-empty message body
-          message=$(echo "$response" | sed -n 's/.*<Message>\(.*\)<\/Message>.*/\1/p')
+          # Verify the agent returned a non-empty message body.
+          # Collapse newlines first — LLM responses often span multiple lines, which
+          # would break a single-line sed pattern.
+          message=$(echo "$response" | tr '\n' ' ' | sed -n 's/.*<Message>\(.*\)<\/Message>.*/\1/p')
           [ -n "$message" ] || { echo "ERROR: agent returned an empty message"; exit 1; }
           echo "Agent reply: $message"
           echo "✓ /webhooks/twilio passed"
