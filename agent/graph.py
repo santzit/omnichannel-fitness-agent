@@ -1,4 +1,7 @@
+import logging
 import os
+
+_log = logging.getLogger(__name__)
 
 if os.getenv("MOCK_AGENT") == "true":
     class _MockCompiledGraph:
@@ -11,7 +14,7 @@ else:
     from .state import AgentState
     from .prompts import SYSTEM_PROMPT
     from app.rag.retriever import retriever
-    from openai import OpenAI
+    from openai import OpenAI, OpenAIError
 
     _openai_kwargs = {"api_key": os.getenv("OPENAI_API_KEY")}
     _endpoint = os.getenv("OPENAI_ENDPOINT")
@@ -23,8 +26,12 @@ else:
     _LLM_MODEL = os.getenv("LLM_MODEL", "gpt-4o-mini")
 
     def retrieve_docs(state):
-        docs = retriever.invoke(state["user_message"])
-        return {"context": [doc.page_content for doc in docs]}
+        try:
+            docs = retriever.invoke(state["user_message"])
+            return {"context": [doc.page_content for doc in docs]}
+        except (OpenAIError, Exception) as exc:
+            _log.warning("RAG retrieval failed, answering without context: %s", exc)
+            return {"context": []}
 
     def generate_answer(state):
         context = "\n\n".join(state["context"])
