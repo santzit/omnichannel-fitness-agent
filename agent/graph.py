@@ -3,58 +3,66 @@ import os
 
 _log = logging.getLogger(__name__)
 
-if os.getenv("MOCK_AGENT") == "true":
-    class _MockCompiledGraph:
-        def invoke(self, state, *args, **kwargs):
-            return {"response": "Mock fitness agent response."}
+from langgraph.graph import StateGraph
 
-    agent = _MockCompiledGraph()
-else:
-    from langgraph.graph import StateGraph
-    from .state import AgentState
-    from .prompts import SYSTEM_PROMPT
-    from app.rag.retriever import retriever
-    from openai import OpenAI, OpenAIError
+from .prompts import SYSTEM_PROMPT
+from .state import AgentState
+from app.rag.retriever import retriever  # _LazyRetriever — safe at import time
 
-    _openai_kwargs = {"api_key": os.getenv("OPENAI_API_KEY")}
-    _endpoint = os.getenv("OPENAI_ENDPOINT")
-    if _endpoint:
-        _openai_kwargs["base_url"] = _endpoint
 
-    client = OpenAI(**_openai_kwargs)
+class _LazyAgent:
+    """Defers OpenAI client creation and graph compilation until first invoke().
 
-    _LLM_MODEL = os.getenv("LLM_MODEL", "gpt-4o-mini")
+    This allows the module to be imported without OPENAI_API_KEY being set
+    (e.g. for tests that patch agent.invoke or don't exercise the LLM path).
+    The real graph is built on the first invoke() call.
+    """
 
-    def retrieve_docs(state):
-        try:
-            docs = retriever.invoke(state["user_message"])
-            return {"context": [doc.page_content for doc in docs]}
-        except (OpenAIError, Exception) as exc:
-            _log.warning("RAG retrieval failed, answering without context: %s", exc)
-            return {"context": []}
+    def __init__(self) -> None:
+        self._compiled = None
 
-    def generate_answer(state):
-        context = "\n\n".join(state["context"])
+    def _build(self):
+        from openai import OpenAI
 
-        prompt = SYSTEM_PROMPT.format(context=context)
+        _openai_kwargs = {"api_key": os.getenv("OPENAI_API_KEY")}
+        _endpoint = os.getenv("OPENAI_ENDPOINT")
+        if _endpoint:
+            _openai_kwargs["base_url"] = _endpoint
 
-        response = client.chat.completions.create(
-            model=_LLM_MODEL,
-            messages=[
-                {"role": "system", "content": prompt},
-                {"role": "user", "content": state["user_message"]},
-            ],
-        )
+        client = OpenAI(**_openai_kwargs)
+        _LLM_MODEL = os.getenv("LLM_MODEL", "gpt-4o-mini")
 
-        return {"response": response.choices[0].message.content}
+        def retrieve_docs(state):
+            try:
+                docs = retriever.invoke(state["user_message"])
+                return {"context": [doc.page_content for doc in docs]}
+            except Exception as exc:
+                _log.warning("RAG retrieval failed, answering without context: %s", exc)
+                return {"context": []}
 
-    graph = StateGraph(AgentState)
+        def generate_answer(state):
+            context = "\n\n".join(state["context"])
+            prompt = SYSTEM_PROMPT.format(context=context)
+            response = client.chat.completions.create(
+                model=_LLM_MODEL,
+                messages=[
+                    {"role": "system", "content": prompt},
+                    {"role": "user", "content": state["user_message"]},
+                ],
+            )
+            return {"response": response.choices[0].message.content}
 
-    graph.add_node("retrieve", retrieve_docs)
-    graph.add_node("generate", generate_answer)
+        graph = StateGraph(AgentState)
+        graph.add_node("retrieve", retrieve_docs)
+        graph.add_node("generate", generate_answer)
+        graph.set_entry_point("retrieve")
+        graph.add_edge("retrieve", "generate")
+        return graph.compile()
 
-    graph.set_entry_point("retrieve")
+    def invoke(self, state, *args, **kwargs):
+        if self._compiled is None:
+            self._compiled = self._build()
+        return self._compiled.invoke(state, *args, **kwargs)
 
-    graph.add_edge("retrieve", "generate")
 
-    agent = graph.compile()
+agent = _LazyAgent()

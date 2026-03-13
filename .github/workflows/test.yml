@@ -46,6 +46,7 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENAI_ENDPOINT: ${{ vars.OPENAI_ENDPOINT }}
           LLM_MODEL: ${{ vars.LLM_MODEL }}
+          EMBEDDING_MODEL: ${{ vars.EMBEDDING_MODEL }}
         run: pytest tests/ -v
 
   build:
@@ -146,6 +147,9 @@ jobs:
           PHONE_NUMBER_ID=${PHONE_NUMBER_ID}
           POSTGRES_URL=postgresql://postgres:postgres@postgres:5432/fitness
           EOF
+
+      - name: Create external networks required by Compose
+        run: docker network create traefik_proxy || true
 
       - name: Start CI stack (API + Postgres)
         run: docker compose up -d --no-build api postgres
