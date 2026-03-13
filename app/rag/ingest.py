@@ -6,12 +6,17 @@ _log = logging.getLogger(__name__)
 
 def ingest() -> None:
     """Load docs from ./docs, split them, and upsert into the PGVector store."""
-    from langchain_community.document_loaders import DirectoryLoader
+    from langchain_community.document_loaders import DirectoryLoader, TextLoader
     from langchain_openai import OpenAIEmbeddings
     from langchain_postgres import PGVector
     from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-    loader = DirectoryLoader("./docs")
+    loader = DirectoryLoader(
+        "./docs",
+        glob="**/*.md",
+        loader_cls=TextLoader,
+        loader_kwargs={"encoding": "utf-8"},
+    )
     documents = loader.load()
 
     splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
