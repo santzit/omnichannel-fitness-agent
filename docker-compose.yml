@@ -9,7 +9,8 @@ services:
     ports:
       - "8000:8000"
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
     restart: unless-stopped
 
   postgres:
@@ -20,6 +21,13 @@ services:
       POSTGRES_DB: fitness
     ports:
       - "5432:5432"
+    volumes:
+      - ./setup.sql:/docker-entrypoint-initdb.d/setup.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d fitness"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   openwebui:
     image: ghcr.io/open-webui/open-webui:main
