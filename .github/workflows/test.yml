@@ -95,14 +95,14 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Start CI stack (Traefik + API + Postgres)
+      - name: Start CI stack (API + Postgres)
         run: docker compose -f docker-compose.ci.yml up -d --build
 
-      - name: Wait for API to be ready on port 80
+      - name: Wait for API to be ready on port 8000
         run: |
           echo "Waiting for API to become healthy..."
           for i in $(seq 1 30); do
-            if curl -sf http://localhost:80/health > /dev/null 2>&1; then
+            if curl -sf http://localhost:8000/health > /dev/null 2>&1; then
               echo "API is ready after ${i} attempts."
               break
             fi
@@ -110,16 +110,16 @@ jobs:
             sleep 3
           done
 
-      - name: Smoke test — GET /health on port 80
+      - name: Smoke test — GET /health on port 8000
         run: |
-          response=$(curl -sf http://localhost:80/health)
+          response=$(curl -sf http://localhost:8000/health)
           echo "Response: $response"
           echo "$response" | jq -e '.status == "ok"'
           echo "✓ /health passed"
 
-      - name: Smoke test — POST /webhooks/twilio on port 80
+      - name: Smoke test — POST /webhooks/twilio on port 8000
         run: |
-          response=$(curl -sf -X POST http://localhost:80/webhooks/twilio \
+          response=$(curl -sf -X POST http://localhost:8000/webhooks/twilio \
             --data-urlencode "From=+15550001234" \
             --data-urlencode "Body=hello world" \
             -H "Content-Type: application/x-www-form-urlencoded")
