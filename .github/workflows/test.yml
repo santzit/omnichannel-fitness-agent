@@ -98,7 +98,8 @@ jobs:
       - name: Create CI .env
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          OPENAI_ENDPOINT: ${{ secrets.OPENAI_ENDPOINT }}
+          OPENAI_ENDPOINT: ${{ vars.OPENAI_ENDPOINT }}
+          LLM_PROVIDER: ${{ vars.LLM_PROVIDER }}
           LLM_MODEL: ${{ vars.LLM_MODEL }}
           META_VERIFY_TOKEN: ${{ secrets.META_VERIFY_TOKEN }}
           WHATSAPP_TOKEN: ${{ secrets.WHATSAPP_TOKEN }}
@@ -107,6 +108,7 @@ jobs:
           cat > .env <<EOF
           OPENAI_API_KEY=${OPENAI_API_KEY}
           OPENAI_ENDPOINT=${OPENAI_ENDPOINT}
+          LLM_PROVIDER=${LLM_PROVIDER:-openai}
           LLM_MODEL=${LLM_MODEL:-gpt-4.1}
           META_VERIFY_TOKEN=${META_VERIFY_TOKEN}
           WHATSAPP_TOKEN=${WHATSAPP_TOKEN}
