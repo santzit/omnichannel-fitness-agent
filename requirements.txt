@@ -9,6 +9,7 @@ langchain-text-splitters
 langchain-postgres
 
 psycopg[binary]
+psycopg2-binary
 
 openai
 
