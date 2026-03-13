@@ -2,12 +2,22 @@
 RAG integration tests — verifies that the agent uses context retrieved from the
 vector store to answer factual questions about SANTZ Academy.
 
-The retriever is patched to return the full QA document so the test is not
-coupled to a live PGVector instance.  The LLM call is real, so these tests are
-skipped when OPENAI_API_KEY is not configured (they run in CI where the secret
-is injected).
+Two kinds of tests live here:
+
+1. **Infrastructure tests** (no credentials needed) — assert that retriever.py
+   and ingest.py always produce a valid, non-None Postgres connection string,
+   even when POSTGRES_URL is absent from the environment.  These are regression
+   tests for the production error:
+       'connection should be a connection string or an instance of
+        sqlalchemy.engine.Engine or sqlalchemy.ext.asyncio.engine.AsyncEngine'
+
+2. **Agent-answer tests** (require OPENAI_API_KEY) — the retriever is patched
+   to return the full QA document so the test is not coupled to a live PGVector
+   instance.  These verify the LLM uses the injected context rather than falling
+   back to 'Vou encaminhar para um atendente humano'.
 """
 
+import os
 import pathlib
 from unittest.mock import MagicMock, patch
 
@@ -145,3 +155,81 @@ def test_rag_qa_document_exists():
     assert "Palmeiras" in _QA_CONTENT, "QA document missing street address"
     assert "estacionamento" in _QA_CONTENT.lower(), "QA document missing parking info"
     assert "06h" in _QA_CONTENT, "QA document missing weekday opening hour"
+
+
+def test_rag_retriever_default_connection_is_not_none():
+    """Regression: retriever must NOT pass connection=None to PGVector.
+
+    When POSTGRES_URL is absent from the environment, retriever.py must fall
+    back to a hard-coded default rather than None — otherwise PGVector raises:
+        'connection should be a connection string or an instance of
+         sqlalchemy.engine.Engine or sqlalchemy.ext.asyncio.engine.AsyncEngine'
+
+    The default must also use the psycopg3 driver scheme
+    (postgresql+psycopg://) that langchain_postgres requires.
+    """
+    from app.rag.retriever import _LazyRetriever
+
+    captured = {}
+
+    mock_vs = MagicMock()
+    mock_vs.as_retriever.return_value = MagicMock(invoke=MagicMock(return_value=[]))
+
+    def spy_pgvector(**kwargs):
+        captured.update(kwargs)
+        return mock_vs
+
+    # Remove POSTGRES_URL so the fallback default is the only option.
+    env_without_postgres = {k: v for k, v in os.environ.items() if k != "POSTGRES_URL"}
+    with patch.dict(os.environ, env_without_postgres, clear=True):
+        with patch("langchain_openai.OpenAIEmbeddings", return_value=MagicMock()):
+            with patch("langchain_postgres.PGVector", side_effect=spy_pgvector):
+                _LazyRetriever().invoke("test")
+
+    connection = captured.get("connection")
+    assert connection is not None, (
+        "retriever.py passed connection=None to PGVector — POSTGRES_URL default is missing"
+    )
+    assert connection.startswith("postgresql+psycopg://"), (
+        f"Default must use the psycopg3 driver scheme (postgresql+psycopg://), got: {connection!r}"
+    )
+
+
+def test_rag_ingest_default_connection_is_not_none():
+    """Regression: ingest must NOT pass connection=None to PGVector.from_documents.
+
+    Mirrors test_rag_retriever_default_connection_is_not_none for the ingest
+    path: both must agree on a valid default so that containers without an
+    explicit POSTGRES_URL in .env still work.
+    """
+    from app.rag.ingest import ingest
+
+    captured = {}
+
+    mock_loader = MagicMock()
+    mock_loader.load.return_value = []
+
+    def spy_from_documents(**kwargs):
+        captured.update(kwargs)
+
+    # Remove POSTGRES_URL so the fallback default is the only option.
+    env_without_postgres = {k: v for k, v in os.environ.items() if k != "POSTGRES_URL"}
+    with patch.dict(os.environ, env_without_postgres, clear=True):
+        with patch(
+            "langchain_community.document_loaders.DirectoryLoader",
+            return_value=mock_loader,
+        ):
+            with patch("langchain_openai.OpenAIEmbeddings", return_value=MagicMock()):
+                with patch(
+                    "langchain_postgres.PGVector.from_documents",
+                    side_effect=spy_from_documents,
+                ):
+                    ingest()
+
+    connection = captured.get("connection")
+    assert connection is not None, (
+        "ingest.py passed connection=None to PGVector — POSTGRES_URL default is missing"
+    )
+    assert connection.startswith("postgresql+psycopg://"), (
+        f"Default must use the psycopg3 driver scheme (postgresql+psycopg://), got: {connection!r}"
+    )

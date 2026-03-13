@@ -21,7 +21,10 @@ class _LazyRetriever:
             from langchain_openai import OpenAIEmbeddings
             from langchain_postgres import PGVector
 
-            connection = os.getenv("POSTGRES_URL")
+            connection = os.getenv(
+                "POSTGRES_URL",
+                "postgresql+psycopg://postgres:postgres@postgres:5432/fitness",
+            )
 
             embeddings_kwargs = {}
             endpoint = os.getenv("OPENAI_ENDPOINT")
