@@ -3,6 +3,7 @@ services:
   api:
     build: .
     image: omnichannel-fitness-agent-api
+    pull_policy: build
     env_file:
       - .env
     ports:
