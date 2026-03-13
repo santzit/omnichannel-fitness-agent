@@ -30,7 +30,13 @@ class _LazyAgent:
             _openai_kwargs["base_url"] = _endpoint
 
         client = OpenAI(**_openai_kwargs)
-        _LLM_MODEL = os.getenv("LLM_MODEL", "gpt-4o-mini")
+        _LLM_MODEL = os.getenv("LLM_MODEL")
+        if not _LLM_MODEL:
+            raise ValueError(
+                "LLM_MODEL is not set. "
+                "Configure it as a repository variable (vars.LLM_MODEL) "
+                "with the model or deployment name to use (e.g. gpt-4.1)."
+            )
 
         def retrieve_docs(state):
             try:
