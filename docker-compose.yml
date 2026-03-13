@@ -16,7 +16,7 @@ services:
 
     networks:
       - traefik_proxy
-      - internal
+      #- internal
 
     labels:
       - "traefik.enable=true"
