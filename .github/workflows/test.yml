@@ -96,15 +96,22 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Create CI .env
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_ENDPOINT: ${{ secrets.OPENAI_ENDPOINT }}
+          LLM_MODEL: ${{ vars.LLM_MODEL }}
+          META_VERIFY_TOKEN: ${{ secrets.META_VERIFY_TOKEN }}
+          WHATSAPP_TOKEN: ${{ secrets.WHATSAPP_TOKEN }}
+          PHONE_NUMBER_ID: ${{ secrets.PHONE_NUMBER_ID }}
         run: |
-          cat > .env <<'EOF'
-          OPENAI_API_KEY=ci-test-key
-          LLM_MODEL=gpt-4o-mini
-          META_VERIFY_TOKEN=ci-test-token
-          WHATSAPP_TOKEN=ci-test-token
-          PHONE_NUMBER_ID=000000000
+          cat > .env <<EOF
+          OPENAI_API_KEY=${OPENAI_API_KEY}
+          OPENAI_ENDPOINT=${OPENAI_ENDPOINT}
+          LLM_MODEL=${LLM_MODEL:-gpt-4.1}
+          META_VERIFY_TOKEN=${META_VERIFY_TOKEN}
+          WHATSAPP_TOKEN=${WHATSAPP_TOKEN}
+          PHONE_NUMBER_ID=${PHONE_NUMBER_ID}
           POSTGRES_URL=postgresql://postgres:postgres@postgres:5432/fitness
-          MOCK_AGENT=true
           EOF
 
       - name: Start CI stack (API + Postgres)
@@ -133,11 +140,15 @@ jobs:
         run: |
           response=$(curl -sf -X POST http://localhost:8000/webhooks/twilio \
             --data-urlencode "From=+15550001234" \
-            --data-urlencode "Body=hello world" \
+            --data-urlencode "Body=hello" \
             -H "Content-Type: application/x-www-form-urlencoded")
           echo "Response: $response"
           echo "$response" | grep -q "<Response>"
           echo "$response" | grep -q "<Message>"
+          # Verify the agent returned a non-empty message body
+          message=$(echo "$response" | sed -n 's/.*<Message>\(.*\)<\/Message>.*/\1/p')
+          [ -n "$message" ] || { echo "ERROR: agent returned an empty message"; exit 1; }
+          echo "Agent reply: $message"
           echo "✓ /webhooks/twilio passed"
 
       - name: Show container logs on failure
