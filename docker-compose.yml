@@ -25,6 +25,7 @@ services:
       - "traefik.http.routers.twilio.tls=true"
       - "traefik.http.routers.twilio.tls.certresolver=letsencrypt"
       - "traefik.http.services.twilio.loadbalancer.server.port=8000"
+      - "traefik.http.routers.twilio.service=twilio"
 
   postgres:
     image: pgvector/pgvector:pg16
