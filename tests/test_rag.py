@@ -1,39 +1,37 @@
 """
-RAG integration tests — verifies that the agent uses context retrieved from the
-vector store to answer factual questions about SANTZ Academy.
+RAG integration tests — exercises the full pipeline end-to-end:
+real embeddings → real PGVector store → real LLM.
 
-Two kinds of tests live here:
+The ``rag_store`` session fixture (conftest.py) enables the pgvector extension
+and ingests /docs/santz_academy_qa.md once before the suite runs.  Every agent
+test then calls the real agent with no retriever patching so the test validates
+the entire path:
 
-1. **Infrastructure tests** (no credentials needed) — assert that retriever.py
-   and ingest.py always produce a valid, non-None Postgres connection string,
-   even when POSTGRES_URL is absent from the environment.  These are regression
-   tests for the production error:
-       'connection should be a connection string or an instance of
-        sqlalchemy.engine.Engine or sqlalchemy.ext.asyncio.engine.AsyncEngine'
+    user question → PGVector similarity search → LLM answer
 
-2. **Agent-answer tests** (require OPENAI_API_KEY) — the PGVector retriever is
-   replaced with a lightweight file-backed retriever that reads the real
-   documents from /docs.  This exercises the full agent pipeline (prompt
-   construction + LLM call) with genuine document content, without needing a
-   running Postgres instance.  These tests FAIL (not skip) when OPENAI_API_KEY
-   is absent.
+Tests FAIL (not skip) when OPENAI_API_KEY or POSTGRES_URL is misconfigured.
+
+Two additional tests require no credentials:
+
+* ``test_rag_qa_document_exists`` — sanity-checks the source document.
+* ``test_rag_retriever_default_connection_is_not_none`` /
+  ``test_rag_ingest_default_connection_is_not_none`` — regression tests that
+  guard against the production bug where connection=None was passed to PGVector.
 """
 
 import os
 import pathlib
 from unittest.mock import MagicMock, patch
 
-from langchain_core.documents import Document
-
 # ---------------------------------------------------------------------------
-# Pre-load the QA document once so every test gets the same context.
+# Pre-load the QA document for the sanity-check test.
 # ---------------------------------------------------------------------------
 
 _QA_DOC_PATH = pathlib.Path(__file__).parent.parent / "docs" / "santz_academy_qa.md"
 _QA_CONTENT = _QA_DOC_PATH.read_text(encoding="utf-8")
 
 # Phrases the agent uses when it has NO context and falls back to a human.
-# Any of these appearing in an answer means RAG was not used.
+# Any of these appearing in an answer means RAG retrieval was not used.
 _HUMAN_REDIRECT_PHRASES = [
     "atendente humano",
     "encaminhar",
@@ -42,47 +40,16 @@ _HUMAN_REDIRECT_PHRASES = [
 ]
 
 
-class _FileRetriever:
-    """Retriever backed by the actual /docs files — no PGVector/database needed.
-
-    Returns real Document objects loaded from the filesystem so tests exercise
-    the full agent pipeline (prompt construction + LLM call) with genuine
-    document content, without requiring a running Postgres instance.
-    """
-
-    def invoke(self, text: str):
-        return [Document(page_content=_QA_CONTENT)]
-
-
-class _EmptyRetriever:
-    """Retriever that returns no documents — simulates an empty vector store."""
-
-    def invoke(self, text: str):
-        return []
-
-
-def _ask_agent_with_rag(question: str) -> str:
-    """Invoke the agent with real document content from /docs as retrieval context.
-
-    Replaces the PGVector-backed retriever with _FileRetriever so the test does
-    not need a running database, while still exercising the full agent pipeline
-    with real document content from /docs/santz_academy_qa.md.
-    """
+def _ask_agent(question: str) -> str:
+    """Invoke the real agent end-to-end — no retriever patching."""
     from agent.graph import agent
 
-    with patch("agent.graph.retriever", new=_FileRetriever()):
-        result = agent.invoke({"user_message": question})
-
+    result = agent.invoke({"user_message": question})
     return result["response"]
 
 
 def _assert_no_human_redirect(answer: str) -> None:
-    """Fail if the answer contains any human-redirect fallback phrase.
-
-    This is the key guard against the original bug where the agent said
-    'Vou encaminhar sua dúvida para um atendente humano' because context
-    was empty (retriever not wired up / vector store not populated).
-    """
+    """Fail if the answer contains any human-redirect fallback phrase."""
     lower = answer.lower()
     for phrase in _HUMAN_REDIRECT_PHRASES:
         assert phrase not in lower, (
@@ -92,62 +59,48 @@ def _assert_no_human_redirect(answer: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Tests
+# Agent-answer tests — require OPENAI_API_KEY + running Postgres with pgvector
+# The rag_store fixture populates the store before any of these tests run.
 # ---------------------------------------------------------------------------
 
 
-def test_rag_academy_name():
+def test_rag_academy_name(rag_store):
     """Agent should reply with the academy name 'SANTZ Academy'."""
-    answer = _ask_agent_with_rag("Qual o nome da academia?")
+    answer = _ask_agent("Qual o nome da academia?")
     _assert_no_human_redirect(answer)
     assert "SANTZ" in answer, f"Expected 'SANTZ' in answer, got: {answer!r}"
 
 
-def test_rag_academy_address():
+def test_rag_academy_address(rag_store):
     """Agent should reply with the street address from the QA document."""
-    answer = _ask_agent_with_rag("Qual o endereço da academia?")
+    answer = _ask_agent("Qual o endereço da academia?")
     _assert_no_human_redirect(answer)
     assert "Palmeiras" in answer or "450" in answer, (
         f"Expected address details in answer, got: {answer!r}"
     )
 
 
-def test_rag_wednesday_hours():
+def test_rag_wednesday_hours(rag_store):
     """Agent should reply with the weekday opening hours (Wednesday = Mon-Fri)."""
-    answer = _ask_agent_with_rag("Qual o horário de atendimento na quarta-feira?")
+    answer = _ask_agent("Qual o horário de atendimento na quarta-feira?")
     _assert_no_human_redirect(answer)
-    # Weekday hours are 06h às 23h; check for the opening or closing hour.
-    assert "06h" in answer or "23h" in answer, f"Expected weekday hours in answer, got: {answer!r}"
-
-
-def test_rag_parking():
-    """Agent should confirm the academy has free parking."""
-    answer = _ask_agent_with_rag("Vocês possuem estacionamento?")
-    _assert_no_human_redirect(answer)
-    assert "estacionamento" in answer.lower(), f"Expected parking info in answer, got: {answer!r}"
-
-
-def test_rag_empty_context_falls_back_gracefully():
-    """When retrieval returns nothing the agent should respond politely.
-
-    This is the expected behaviour when the vector store is empty or the
-    retriever fails — the agent must NOT crash and must NOT invent answers.
-    It should tell the user it will redirect them to a human attendant.
-    """
-    from agent.graph import agent
-
-    with patch("agent.graph.retriever", new=_EmptyRetriever()):
-        result = agent.invoke({"user_message": "Quais são os planos disponíveis?"})
-
-    answer = result["response"]
-    assert answer and answer.strip(), "Agent returned an empty response"
-
-    lower = answer.lower()
-    has_redirect = any(phrase in lower for phrase in _HUMAN_REDIRECT_PHRASES)
-    has_caveat = "não" in lower or "desculpe" in lower
-    assert has_redirect or has_caveat, (
-        f"Expected agent to acknowledge missing context, got: {answer!r}"
+    assert "06h" in answer or "23h" in answer, (
+        f"Expected weekday hours in answer, got: {answer!r}"
     )
+
+
+def test_rag_parking(rag_store):
+    """Agent should confirm the academy has free parking."""
+    answer = _ask_agent("Vocês possuem estacionamento?")
+    _assert_no_human_redirect(answer)
+    assert "estacionamento" in answer.lower(), (
+        f"Expected parking info in answer, got: {answer!r}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Document sanity check — no credentials needed
+# ---------------------------------------------------------------------------
 
 
 def test_rag_qa_document_exists():
@@ -157,6 +110,12 @@ def test_rag_qa_document_exists():
     assert "Palmeiras" in _QA_CONTENT, "QA document missing street address"
     assert "estacionamento" in _QA_CONTENT.lower(), "QA document missing parking info"
     assert "06h" in _QA_CONTENT, "QA document missing weekday opening hour"
+
+
+# ---------------------------------------------------------------------------
+# Infrastructure regression tests — no credentials needed
+# Guard against connection=None being passed to PGVector (production bug).
+# ---------------------------------------------------------------------------
 
 
 def test_rag_retriever_default_connection_is_not_none():
@@ -182,9 +141,8 @@ def test_rag_retriever_default_connection_is_not_none():
         return mock_vs
 
     # Remove POSTGRES_URL so the fallback default is the only option.
-    # Patch build_embeddings at the source module so both the Azure and the
-    # standard-OpenAI code paths are intercepted regardless of which one the
-    # current environment would select.
+    # Patch at app.rag._embeddings so both the Azure and the standard-OpenAI
+    # code paths are intercepted regardless of which one the environment selects.
     env_without_postgres = {k: v for k, v in os.environ.items() if k != "POSTGRES_URL"}
     with patch.dict(os.environ, env_without_postgres, clear=True):
         with patch("app.rag._embeddings.OpenAIEmbeddings", return_value=MagicMock()):
@@ -219,9 +177,6 @@ def test_rag_ingest_default_connection_is_not_none():
         captured.update(kwargs)
 
     # Remove POSTGRES_URL so the fallback default is the only option.
-    # Patch build_embeddings at the source module so both the Azure and the
-    # standard-OpenAI code paths are intercepted regardless of which one the
-    # current environment would select.
     env_without_postgres = {k: v for k, v in os.environ.items() if k != "POSTGRES_URL"}
     with patch.dict(os.environ, env_without_postgres, clear=True):
         with patch(
@@ -243,3 +198,4 @@ def test_rag_ingest_default_connection_is_not_none():
     assert connection.startswith("postgresql+psycopg://"), (
         f"Default must use the psycopg3 driver scheme (postgresql+psycopg://), got: {connection!r}"
     )
+

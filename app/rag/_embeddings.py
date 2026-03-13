@@ -30,6 +30,7 @@ OPENAI_API_TYPE
 """
 
 import os
+from urllib.parse import urlparse
 
 from langchain_openai import AzureOpenAIEmbeddings, OpenAIEmbeddings
 
@@ -40,6 +41,15 @@ def build_embeddings():
     Uses :class:`~langchain_openai.AzureOpenAIEmbeddings` when the endpoint
     looks like an Azure Cognitive Services URL (or ``OPENAI_API_TYPE=azure``),
     and :class:`~langchain_openai.OpenAIEmbeddings` otherwise.
+
+    Azure notes
+    -----------
+    ``OPENAI_ENDPOINT`` may include a path such as ``/openai/v1/`` (common in
+    Azure AI Services resources).  ``AzureOpenAIEmbeddings`` constructs its own
+    deployment URL from the base resource endpoint and must receive only the
+    scheme + host — any extra path component would result in a doubled path and
+    a 404.  We strip the path with ``urllib.parse.urlparse`` before passing the
+    value to ``azure_endpoint``.
     """
     endpoint = os.getenv("OPENAI_ENDPOINT", "")
     embedding_model = os.getenv("EMBEDDING_MODEL", "text-embedding-ada-002")
@@ -51,10 +61,18 @@ def build_embeddings():
     )
 
     if is_azure and endpoint:
+        parsed = urlparse(endpoint)
+        azure_base = f"{parsed.scheme}://{parsed.netloc}"
         return AzureOpenAIEmbeddings(
-            azure_endpoint=endpoint,
+            azure_endpoint=azure_base,
             azure_deployment=embedding_model,
             openai_api_version=os.getenv("OPENAI_API_VERSION", "2024-02-01"),
+        )
+
+    if is_azure and not endpoint:
+        raise ValueError(
+            "OPENAI_API_TYPE is set to 'azure' but OPENAI_ENDPOINT is not configured. "
+            "Set OPENAI_ENDPOINT to your Azure Cognitive Services resource URL."
         )
 
     kwargs = {}

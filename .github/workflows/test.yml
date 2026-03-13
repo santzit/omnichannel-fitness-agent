@@ -20,6 +20,21 @@ jobs:
     permissions:
       contents: read
 
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: fitness
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+        ports:
+          - 5432:5432
+
     steps:
 
       - name: Checkout Repository
@@ -45,8 +60,10 @@ jobs:
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENAI_ENDPOINT: ${{ vars.OPENAI_ENDPOINT }}
+          OPENAI_API_VERSION: ${{ vars.OPENAI_API_VERSION }}
           LLM_MODEL: ${{ vars.LLM_MODEL }}
           EMBEDDING_MODEL: ${{ vars.EMBEDDING_MODEL }}
+          POSTGRES_URL: ${{ vars.POSTGRES_URL }}
         run: pytest tests/ -v
 
   build:
