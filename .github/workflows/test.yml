@@ -9,9 +9,46 @@ on:
       - "main"
 
 jobs:
+  test:
+
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+
+    steps:
+
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run tests
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_ENDPOINT: ${{ vars.OPENAI_ENDPOINT }}
+          LLM_MODEL: ${{ vars.LLM_MODEL }}
+        run: pytest tests/ -v
+
   build:
 
     runs-on: ubuntu-latest
+
+    needs: test
 
     permissions:
       contents: read
@@ -39,15 +76,113 @@ jobs:
           context: .
           file: ./Dockerfile
           push: false
-          tags: omnichannel-fitness-agent:pr-${{ github.event.pull_request.number }}
+          load: true
+          tags: omnichannel-fitness-agent-api:latest
           cache-from: type=local,src=/tmp/.buildx-cache
           cache-to: type=local,dest=/tmp/.buildx-cache-new
 
-      #- name: Run tests
-      #  run: |
-      #    docker run --rm omnichannel-fitness-agent:pr-${{ github.event.pull_request.number }} pytest
+      - name: Export image artifact
+        run: docker save omnichannel-fitness-agent-api:latest | gzip > /tmp/api-image.tar.gz
+
+      - name: Upload image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-docker-image
+          path: /tmp/api-image.tar.gz
+          retention-days: 1
 
       - name: Clean cache
         run: |
           rm -rf /tmp/.buildx-cache
           mv /tmp/.buildx-cache-new /tmp/.buildx-cache
+
+  smoke-test:
+
+    runs-on: ubuntu-latest
+
+    needs: build
+
+    permissions:
+      contents: read
+
+    steps:
+
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Download image artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: api-docker-image
+          path: /tmp
+
+      - name: Load Docker image
+        run: docker load < /tmp/api-image.tar.gz
+
+      - name: Create CI .env
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_ENDPOINT: ${{ vars.OPENAI_ENDPOINT }}
+          LLM_PROVIDER: ${{ vars.LLM_PROVIDER }}
+          LLM_MODEL: ${{ vars.LLM_MODEL }}
+          EMBEDDING_MODEL: ${{ vars.EMBEDDING_MODEL }}
+          META_VERIFY_TOKEN: ${{ secrets.META_VERIFY_TOKEN }}
+          WHATSAPP_TOKEN: ${{ secrets.WHATSAPP_TOKEN }}
+          PHONE_NUMBER_ID: ${{ secrets.PHONE_NUMBER_ID }}
+        run: |
+          cat > .env <<EOF
+          OPENAI_API_KEY=${OPENAI_API_KEY}
+          OPENAI_ENDPOINT=${OPENAI_ENDPOINT}
+          LLM_PROVIDER=${LLM_PROVIDER:-openai}
+          LLM_MODEL=${LLM_MODEL:-gpt-4.1}
+          EMBEDDING_MODEL=${EMBEDDING_MODEL:-text-embedding-ada-002}
+          META_VERIFY_TOKEN=${META_VERIFY_TOKEN}
+          WHATSAPP_TOKEN=${WHATSAPP_TOKEN}
+          PHONE_NUMBER_ID=${PHONE_NUMBER_ID}
+          POSTGRES_URL=postgresql://postgres:postgres@postgres:5432/fitness
+          EOF
+
+      - name: Start CI stack (API + Postgres)
+        run: docker compose up -d api postgres
+
+      - name: Wait for API to be ready on port 8000
+        run: |
+          echo "Waiting for API to become healthy..."
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:8000/health > /dev/null 2>&1; then
+              echo "API is ready after ${i} attempts."
+              break
+            fi
+            echo "  attempt $i/30 — not ready yet, sleeping 3s"
+            sleep 3
+          done
+
+      - name: Smoke test — GET /health on port 8000
+        run: |
+          response=$(curl -sf http://localhost:8000/health)
+          echo "Response: $response"
+          echo "$response" | jq -e '.status == "ok"'
+          echo "✓ /health passed"
+
+      - name: Smoke test — POST /webhooks/twilio on port 8000
+        run: |
+          response=$(curl -sf -X POST http://localhost:8000/webhooks/twilio \
+            --data-urlencode "From=+15550001234" \
+            --data-urlencode "Body=hello" \
+            -H "Content-Type: application/x-www-form-urlencoded")
+          echo "Response: $response"
+          echo "$response" | grep -q "<Response>"
+          echo "$response" | grep -q "<Message>"
+          # Verify the agent returned a non-empty message body
+          message=$(echo "$response" | sed -n 's/.*<Message>\(.*\)<\/Message>.*/\1/p')
+          [ -n "$message" ] || { echo "ERROR: agent returned an empty message"; exit 1; }
+          echo "Agent reply: $message"
+          echo "✓ /webhooks/twilio passed"
+
+      - name: Show container logs on failure
+        if: failure()
+        run: docker compose logs
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v

@@ -10,9 +10,9 @@ ENV PYTHONUNBUFFERED=1
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies (needed by some python packages)
+# Install system dependencies
 RUN apt-get update \
-    && apt-get install -y build-essential curl \
+    && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy dependency file first (better docker cache)
