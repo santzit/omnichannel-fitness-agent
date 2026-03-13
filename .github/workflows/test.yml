@@ -148,6 +148,9 @@ jobs:
           POSTGRES_URL=postgresql://postgres:postgres@postgres:5432/fitness
           EOF
 
+      - name: Create external networks required by Compose
+        run: docker network create traefik_proxy || true
+
       - name: Start CI stack (API + Postgres)
         run: docker compose up -d --no-build api postgres
 
