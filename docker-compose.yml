@@ -21,7 +21,7 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.twilio.rule=Host(`twilio.santzit.com`)"
-      - "traefik.http.routers.twilio.entrypoints=web,websecure"
+      - "traefik.http.routers.twilio.entrypoints=websecure"
       - "traefik.http.routers.twilio.tls=true"
       - "traefik.http.routers.twilio.tls.certresolver=letsencrypt"
       - "traefik.http.services.twilio.loadbalancer.server.port=8000"
