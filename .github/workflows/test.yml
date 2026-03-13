@@ -95,8 +95,20 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
+      - name: Create CI .env
+        run: |
+          cat > .env <<'EOF'
+          OPENAI_API_KEY=ci-test-key
+          LLM_MODEL=gpt-4o-mini
+          META_VERIFY_TOKEN=ci-test-token
+          WHATSAPP_TOKEN=ci-test-token
+          PHONE_NUMBER_ID=000000000
+          POSTGRES_URL=postgresql://postgres:postgres@postgres:5432/fitness
+          MOCK_AGENT=true
+          EOF
+
       - name: Start CI stack (API + Postgres)
-        run: docker compose -f docker-compose.ci.yml up -d --build
+        run: docker compose up -d --build api postgres
 
       - name: Wait for API to be ready on port 8000
         run: |
@@ -130,8 +142,8 @@ jobs:
 
       - name: Show container logs on failure
         if: failure()
-        run: docker compose -f docker-compose.ci.yml logs
+        run: docker compose logs
 
       - name: Tear down
         if: always()
-        run: docker compose -f docker-compose.ci.yml down -v
+        run: docker compose down -v
