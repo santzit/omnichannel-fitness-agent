@@ -209,7 +209,7 @@ jobs:
           # from the QA document (Rua das Palmeiras, 450).  If RAG is broken
           # (e.g. wrong EMBEDDING_MODEL), the LLM answers without context and
           # will not include this specific address, causing the test to fail.
-          echo "$message" | grep -qi "Palmeiras\|450" || {
+          echo "$message" | grep -Eqi "Palmeiras|450" || {
             echo "ERROR: RAG not working — answer does not contain expected address details (Palmeiras/450)"
             exit 1
           }
