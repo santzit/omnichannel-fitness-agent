@@ -194,7 +194,7 @@ jobs:
         run: |
           response=$(curl -sf -X POST http://localhost:8000/webhooks/twilio \
             --data-urlencode "From=+15550001234" \
-            --data-urlencode "Body=hello" \
+            --data-urlencode "Body=Qual o endereço da academia?" \
             -H "Content-Type: application/x-www-form-urlencoded")
           echo "Response: $response"
           echo "$response" | grep -q "<Response>"
@@ -205,7 +205,15 @@ jobs:
           message=$(echo "$response" | tr '\n' ' ' | sed -n 's/.*<Message>\(.*\)<\/Message>.*/\1/p')
           [ -n "$message" ] || { echo "ERROR: agent returned an empty message"; exit 1; }
           echo "Agent reply: $message"
-          echo "✓ /webhooks/twilio passed"
+          # Verify RAG is working — the answer must contain actual address data
+          # from the QA document (Rua das Palmeiras, 450).  If RAG is broken
+          # (e.g. wrong EMBEDDING_MODEL), the LLM answers without context and
+          # will not include this specific address, causing the test to fail.
+          echo "$message" | grep -qi "Palmeiras\|450" || {
+            echo "ERROR: RAG not working — answer does not contain expected address details (Palmeiras/450)"
+            exit 1
+          }
+          echo "✓ /webhooks/twilio passed — RAG context verified"
 
       - name: Show container logs on failure
         if: failure()
