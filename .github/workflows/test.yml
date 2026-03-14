@@ -177,11 +177,14 @@ jobs:
           for i in $(seq 1 30); do
             if curl -sf http://localhost:8000/health > /dev/null 2>&1; then
               echo "API is ready after ${i} attempts."
-              break
+              exit 0
             fi
             echo "  attempt $i/30 — not ready yet, sleeping 3s"
             sleep 3
           done
+          echo "ERROR: API did not become ready within 90 seconds (container may have crashed — check logs)"
+          docker compose logs api
+          exit 1
 
       - name: Smoke test — GET /health on port 8000
         run: |
