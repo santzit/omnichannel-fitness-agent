@@ -1,4 +1,3 @@
-from unittest.mock import patch
 from xml.etree import ElementTree
 
 from tests.conftest import needs_openai
@@ -43,19 +42,12 @@ def test_twilio_webhook_reads_body_field(client):
     assert message_elem.text and message_elem.text.strip(), "Agent returned an empty reply"
 
 
-def test_twilio_webhook_escapes_xml_special_chars(client):
-    """Agent replies containing XML special characters must be escaped so the
-    TwiML document remains valid and parseable.  The agent is patched locally
-    to inject a controlled response with special chars — this tests the
-    endpoint's escaping logic, not the LLM."""
-    with patch("app.api.twilio_webhook.agent") as mock:
-        mock.invoke.return_value = {"response": "Use weights < 10kg & stay safe > always"}
-        response = client.post(
-            "/webhooks/twilio",
-            data={"From": "+15550001234", "Body": "Any tips?"},
-        )
+def test_twiml_reply_escapes_xml_special_chars():
+    """_twiml_reply must escape XML special characters so the TwiML document
+    remains valid and parseable regardless of what the LLM returns."""
+    from app.api.twilio_webhook import _twiml_reply
 
-    assert response.status_code == 200
-    root = ElementTree.fromstring(response.text)
+    response = _twiml_reply("Use weights < 10kg & stay safe > always")
+    root = ElementTree.fromstring(response.body.decode())
     assert root.find("Message").text == "Use weights < 10kg & stay safe > always"
 

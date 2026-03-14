@@ -20,6 +20,21 @@ jobs:
     permissions:
       contents: read
 
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: fitness
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+        ports:
+          - 5432:5432
+
     steps:
 
       - name: Checkout Repository
@@ -45,8 +60,10 @@ jobs:
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENAI_ENDPOINT: ${{ vars.OPENAI_ENDPOINT }}
+          OPENAI_API_VERSION: ${{ vars.OPENAI_API_VERSION }}
           LLM_MODEL: ${{ vars.LLM_MODEL }}
           EMBEDDING_MODEL: ${{ vars.EMBEDDING_MODEL }}
+          POSTGRES_URL: ${{ vars.POSTGRES_URL }}
         run: pytest tests/ -v
 
   build:
@@ -160,11 +177,14 @@ jobs:
           for i in $(seq 1 30); do
             if curl -sf http://localhost:8000/health > /dev/null 2>&1; then
               echo "API is ready after ${i} attempts."
-              break
+              exit 0
             fi
             echo "  attempt $i/30 — not ready yet, sleeping 3s"
             sleep 3
           done
+          echo "ERROR: API did not become ready within 90 seconds (container may have crashed — check logs)"
+          docker compose logs api
+          exit 1
 
       - name: Smoke test — GET /health on port 8000
         run: |
@@ -177,16 +197,26 @@ jobs:
         run: |
           response=$(curl -sf -X POST http://localhost:8000/webhooks/twilio \
             --data-urlencode "From=+15550001234" \
-            --data-urlencode "Body=hello" \
+            --data-urlencode "Body=Qual o endereço da academia?" \
             -H "Content-Type: application/x-www-form-urlencoded")
           echo "Response: $response"
           echo "$response" | grep -q "<Response>"
           echo "$response" | grep -q "<Message>"
-          # Verify the agent returned a non-empty message body
-          message=$(echo "$response" | sed -n 's/.*<Message>\(.*\)<\/Message>.*/\1/p')
+          # Verify the agent returned a non-empty message body.
+          # Collapse newlines first — LLM responses often span multiple lines, which
+          # would break a single-line sed pattern.
+          message=$(echo "$response" | tr '\n' ' ' | sed -n 's/.*<Message>\(.*\)<\/Message>.*/\1/p')
           [ -n "$message" ] || { echo "ERROR: agent returned an empty message"; exit 1; }
           echo "Agent reply: $message"
-          echo "✓ /webhooks/twilio passed"
+          # Verify RAG is working — the answer must contain actual address data
+          # from the QA document (Rua das Palmeiras, 450).  If RAG is broken
+          # (e.g. wrong EMBEDDING_MODEL), the LLM answers without context and
+          # will not include this specific address, causing the test to fail.
+          echo "$message" | grep -Eqi "Palmeiras|450" || {
+            echo "ERROR: RAG not working — answer does not contain expected address details (Palmeiras/450)"
+            exit 1
+          }
+          echo "✓ /webhooks/twilio passed — RAG context verified"
 
       - name: Show container logs on failure
         if: failure()
